@@ -1,0 +1,150 @@
+---
+title: "gmxdcc: GARCH-MIDAS and DCC-MIDAS with covariates and breaks"
+output: rmarkdown::html_vignette
+vignette: >
+  %\VignetteIndexEntry{gmxdcc: GARCH-MIDAS and DCC-MIDAS with covariates and breaks}
+  %\VignetteEngine{knitr::rmarkdown}
+  %\VignetteEncoding{UTF-8}
+---
+
+```{r, include = FALSE}
+knitr::opts_chunk$set(collapse = TRUE, comment = "#>", eval = FALSE)
+```
+
+## Model overview
+
+The univariate model is the two-component GARCH-MIDAS
+\[
+r_t = \mu + \sqrt{\tau_t\, g_t}\,\epsilon_t, \qquad
+g_t = (1-\alpha-\beta) + \alpha \frac{(r_{t-1}-\mu)^2}{\tau_{t-1}} + \beta g_{t-1},
+\]
+with a slowly-moving long-run component driven by low-frequency covariates
+\[
+\log \tau_t = m(t) + \sum_j \theta_j(t)\,\mathrm{MIDAS}(X_j; \omega_j)_t .
+\]
+
+Any number of covariates \(X_j\) is allowed (monthly or quarterly), each
+with its own MIDAS lag order; realized volatility computed from the daily
+returns themselves can be included with `rv = TRUE`. When `break_dates`
+are supplied, the intercept \(m\) and every slope \(\theta_j\) become
+piecewise-constant across the regimes defined by the break dates.
+
+The multivariate step models the conditional correlation of the
+standardized residuals: cDCC, aDCC, DECO, or DCC-MIDAS with a long-run
+correlation driven by realized correlations (`rc`), exogenous covariates
+(`corr_X`) and optional breaks (`corr_break_dates`).
+
+## Bundled sample data
+
+The package ships four small datasets so the examples run as-is:
+
+* `topix_market` — daily TOPIX market returns (column `TOPIX`);
+* `topix_autos` — daily TOPIX-17 Autos & Transportation Equipment industry
+  returns (column `AUTOS`);
+* `jp_macro_uncertainty` — monthly standardized Japan macro uncertainty
+  index (column `JPMU`);
+* `jp_mu_breaks` — the four structural break dates detected in the mean of
+  `jp_macro_uncertainty` with `strucchange::breakpoints(y ~ 1)`, ready to
+  use as `break_dates` / `corr_break_dates`.
+
+包内置四个示例数据集(TOPIX 市场收益、汽车行业收益、日本宏观不确定性
+指数及其结构突变日期),下述示例可直接运行。
+
+## Univariate example
+
+Market volatility with a macro-uncertainty-driven long-run component and
+structural breaks:
+
+```{r univ}
+library(gmxdcc)
+library(xts)
+
+fit <- fit_garch_midas(
+  topix_market,
+  X = list(JPMU = jp_macro_uncertainty),  # any number of macro covariates
+  K = 24,                                 # lag order (vector for several X)
+  rv = FALSE,                             # TRUE adds realized volatility
+  break_dates = jp_mu_breaks,             # piecewise m(t) and theta(t)
+  distribution = "norm", lag_fun = "Beta", period = "monthly",
+  seed = 1
+)
+summary(fit)
+coef(fit); logLik(fit); vcov(fit)
+
+# Long-run vs total conditional volatility / 长期成分与总条件波动率
+plot(xts(cbind(total = fit$est_vol_in_s, longrun = sqrt(fit$est_lr_in_s)),
+         order.by = seq_along(fit$est_vol_in_s)))
+```
+
+## Two-step DCC-MIDAS example
+
+Conditional correlation between the autos industry and the market, with
+the long-run correlation driven by macro uncertainty and its breaks:
+
+```{r dcc}
+panel <- merge.xts(topix_autos, topix_market)
+panel <- panel[complete.cases(panel), ]
+
+dcc <- fit_dcc(
+  panel,
+  univariate = "garch_midas",
+  univariate_args = list(X = jp_macro_uncertainty, K = 24, rv = FALSE,
+                         break_dates = jp_mu_breaks),
+  correlation = "DCC-MIDAS",
+  rc = FALSE,                       # set TRUE (+ N_c) to add realized corr
+  corr_X = list(JPMU = jp_macro_uncertainty), K_c = 24,
+  corr_break_dates = jp_mu_breaks,
+  seed = 1
+)
+summary(dcc)
+dim(dcc$R_t)      # in-sample conditional correlations
+
+# Conditional correlation path / 条件相关系数路径
+plot(xts(dcc$R_t[1, 2, ], order.by = dcc$Days))
+```
+
+With `out_of_sample = n` the same call additionally returns `R_t_oos`,
+`H_t_oos` etc. for the held-out days, produced by the warm-started
+full-sample filter.
+
+## Migration from the legacy script
+
+| Legacy model string | New arguments |
+|---|---|
+| `GM_noskew_RV` | `rv = TRUE, X = NULL` |
+| `GM_noskew_X` | `rv = FALSE, X = list(x)` |
+| `GM_noskew_RV_X` | `rv = TRUE, X = list(x)` |
+| `GM_noskew_*_sb` | add `break_dates` |
+| `DCCMIDAS_RC` | `correlation = "DCC-MIDAS", rc = TRUE` |
+| `DCCMIDAS_X` | `correlation = "DCC-MIDAS", rc = FALSE, corr_X = list(x)` |
+| `DCCMIDAS_RC_X` | `correlation = "DCC-MIDAS", rc = TRUE, corr_X = list(x)` |
+| `DCCMIDAS_*_sb` | add `corr_break_dates` |
+
+Argument renames: `X_stru_break_date_vec` → `break_dates` /
+`corr_break_dates`; `type` → `period`; `R` → `n_starts`.
+
+## Standard errors
+
+Both steps report Bollerslev–Wooldridge (1992) QMLE sandwich standard
+errors \(H^{-1}(G'G)H^{-1}\) computed from the numerical Hessian and the
+outer product of per-observation gradients. As is standard in the two-step
+DCC literature (Engle 2002), the second-step standard errors do not correct
+for first-stage estimation uncertainty.
+
+## Out-of-sample design
+
+With `out_of_sample = n`, parameters are estimated on the first
+\(T - n\) observations only. All conditional quantities for the held-out
+days come from filtering the **full** sample with the frozen parameter
+estimates, so the recursions continue from the last in-sample state
+(the legacy script restarted them cold), and unconditional targets
+(covariance/asymmetry matrices) are computed from in-sample residuals only.
+
+## Parallel use
+
+Where the legacy project kept a separate "multi cores" copy of the script,
+simply attach the package inside each worker:
+
+```{r par}
+parallel::clusterEvalQ(cl, library(gmxdcc))
+```

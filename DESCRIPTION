@@ -1,0 +1,46 @@
+Package: gmxdcc
+Type: Package
+Title: GARCH-MIDAS and DCC-MIDAS Models with Exogenous Covariates and
+    Structural Breaks
+Version: 0.1.0
+Authors@R:
+    person("JIANCHANG", "LYU", email = "rokenshotlib124@gmail.com",
+           role = c("aut", "cre"))
+Description: Two-step quasi-maximum-likelihood estimation of GARCH-MIDAS
+    volatility models and cDCC, aDCC, DECO and DCC-MIDAS correlation
+    models. The long-run components admit an arbitrary list of
+    low-frequency covariates (including automatically generated realized
+    volatility and realized correlation), each with its own MIDAS lag
+    order, and piecewise-constant structural breaks in the long-run
+    intercepts and slopes. Robust Bollerslev-Wooldridge (1992)
+    <doi:10.1080/07474939208800229> sandwich standard errors are reported
+    in both estimation steps. Likelihood recursions are implemented in
+    C++ via 'Rcpp' and 'RcppArmadillo'.
+License: GPL (>= 3)
+Encoding: UTF-8
+LazyData: true
+Roxygen: list(markdown = TRUE)
+Depends:
+    R (>= 4.1.0)
+Imports:
+    lubridate,
+    maxLik,
+    Rcpp,
+    roll,
+    rugarch,
+    stats,
+    utils,
+    xts,
+    zoo
+LinkingTo:
+    Rcpp,
+    RcppArmadillo
+Suggests:
+    MASS,
+    rumidas,
+    testthat (>= 3.0.0),
+    knitr,
+    rmarkdown
+Config/testthat/edition: 3
+VignetteBuilder: knitr
+Config/roxygen2/version: 8.0.0
