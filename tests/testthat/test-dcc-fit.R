@@ -106,3 +106,51 @@ test_that("fit_dcc supports aDCC and DECO with std innovations", {
     expect_identical(nrow(fit$corr_coef_mat), if (cm == "aDCC") 3L else 2L)
   }
 })
+
+test_that("start_matrix routing: corr-step injection + per-asset univ starts", {
+  skip_on_cran()
+  pn <- dcc_panel()
+  panel <- pn$panel["2014/2019"]
+
+  # Reference fit with random multistart / 随机多起点的基准拟合
+  base <- suppressWarnings(fit_dcc(
+    panel, univariate = "garch_midas",
+    univariate_args = list(X = pn$macro, K = 6, rv = FALSE),
+    correlation = "DCC-MIDAS", rc = FALSE,
+    corr_X = list(M = pn$macro), K_c = 6,
+    n_starts = 2, seed = 3
+  ))
+
+  # Warm restart from the base optimum: per-asset univariate starts via
+  # univariate_args, correlation start via control — the rolling
+  # re-estimation pattern. Before the routing fix this errored (the corr
+  # start matrix leaked into the univariate stage with wrong columns).
+  # 从基准最优热重启:第一步逐资产、第二步经 control 注入,即滚动重估
+  # 用法;路由修复前相关步起点会漏进第一步导致列数错误。
+  univ_starts <- lapply(base$est_univ_model,
+                        function(m) matrix(m[, "Estimate"], nrow = 1))
+  corr_start  <- matrix(coef(base), nrow = 1)
+
+  warm <- suppressWarnings(fit_dcc(
+    panel, univariate = "garch_midas",
+    univariate_args = list(X = pn$macro, K = 6, rv = FALSE,
+                           start_matrix = univ_starts),
+    correlation = "DCC-MIDAS", rc = FALSE,
+    corr_X = list(M = pn$macro), K_c = 6,
+    control = list(start_matrix = corr_start)
+  ))
+
+  # Restarting at the optimum must converge back to (essentially) it
+  # 从最优点出发必须收敛回同一处
+  expect_equal(coef(warm), coef(base), tolerance = 1e-3)
+  expect_equal(as.numeric(warm$c_llk), as.numeric(base$c_llk), tolerance = 1e-4)
+
+  # Wrong-length list is rejected / 列表长度不符时报错
+  expect_error(
+    fit_dcc(panel, univariate = "garch_midas",
+            univariate_args = list(X = pn$macro, K = 6, rv = FALSE,
+                                   start_matrix = univ_starts[1]),
+            correlation = "cDCC"),
+    "one matrix per asset"
+  )
+})

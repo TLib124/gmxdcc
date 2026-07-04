@@ -30,7 +30,9 @@ univ_stage(
 
 \item{univariate_args}{List of arguments for the \code{garch_midas} path:
 \code{X}, \code{K}, \code{rv}, \code{K_rv}, \code{break_dates} (same semantics as
-\code{\link[=fit_garch_midas]{fit_garch_midas()}}); \code{rv} covariates are computed from \code{r_full}.}
+\code{\link[=fit_garch_midas]{fit_garch_midas()}}); \code{rv} covariates are computed from \code{r_full}.
+Optionally \code{start_matrix}: optimizer starts for the first step — one
+matrix used for every asset, or a list with one matrix per asset.}
 
 \item{r_full}{Original (untrimmed) returns, used to compute realized
 volatility with full history.}

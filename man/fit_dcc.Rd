@@ -55,7 +55,11 @@ for the long-run correlation.}
 \item{vol_proxy}{Optional multivariate variance proxy (same columns as
 \code{returns}).}
 
-\item{n_starts, seed, control}{Optimizer settings shared by both steps.}
+\item{n_starts, seed, control}{Optimizer settings shared by both steps.
+Exception: \code{control$start_matrix} targets the correlation step only
+(columns in \code{dcc_par_index()} order); first-step starts go through
+\code{univariate_args$start_matrix}. 注:control$start_matrix 只作用于
+第二步,第一步起点经 univariate_args$start_matrix 注入。}
 }
 \value{
 An object of class \code{dcc_fit}; see \code{\link[=summary.dcc_fit]{summary.dcc_fit()}}.

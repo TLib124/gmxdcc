@@ -82,6 +82,15 @@ summary(dcc)
 plot(xts(dcc$R_t[1, 2, ], order.by = dcc$Days))
 ```
 
+## Documentation
+
+A full reference manual — model equations, the design and meaning of every
+argument, optimizer internals and worked examples — is available in two
+languages:
+
+- English: [docs/gmxdcc-manual-en.md](docs/gmxdcc-manual-en.md)
+- 中文: [docs/gmxdcc-manual.md](docs/gmxdcc-manual.md)
+
 ## Migrating from the legacy research script
 
 | Legacy model string | New arguments |

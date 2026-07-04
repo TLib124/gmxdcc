@@ -1,3 +1,23 @@
+# gmxdcc 0.1.0 (updates since the initial GitHub release)
+
+* Fixed the routing of optimizer start-value injection in `fit_dcc()`:
+  `control$start_matrix` now targets the second (correlation) step only.
+  Previously the same `control` list was forwarded to the univariate stage,
+  so a correlation-sized start matrix leaked into `fit_garch_midas()` and
+  raised a column-count error whenever `univariate = "garch_midas"`.
+* New: `univariate_args$start_matrix` injects first-step optimizer starts —
+  a single matrix applied to every asset, or a list with one matrix per
+  asset (columns in the canonical `gm_par_index()` order). Together with
+  `control$start_matrix` this enables cheap warm restarts across rolling /
+  recursive re-estimation windows: seed each window's optimizer with the
+  previous window's estimates instead of a fresh random multistart.
+* Injected starts that sit on (or, after the 6-decimal rounding of
+  `coef()`, marginally outside) an inequality constraint boundary are now
+  nudged minimally into the strict interior before optimization.
+  `constrOptim`'s log-barrier requires a strictly interior start, so warm
+  restarts from a near-boundary optimum previously failed with
+  "initial value in 'vmmin' is not finite".
+
 # gmxdcc 0.1.0
 
 First packaged release, refactored from the research script

@@ -51,6 +51,27 @@ run_multistart <- function(loglik_fn, data, spec, n_starts = 100,
   start_val <- begin_val[which.max(which_row), ]
   names(start_val) <- spec$names
 
+  # constrOptim's log-barrier needs a STRICTLY interior start. Injected
+  # warm starts (e.g. coef() of a previous fit, rounded to 6 decimals)
+  # often sit on or marginally outside a boundary; blend such points
+  # minimally toward the spec's canonical interior start until strictly
+  # feasible. Randomly drawn starts are interior by construction.
+  # 对数障碍法要求起点严格位于可行域内部;注入的热重启起点(如上一次
+  # 拟合的舍入系数)常贴边或微越界,此处向规格内部点做最小混合修正。
+  slack <- as.vector(spec$ui %*% start_val + spec$ci)
+  if (any(slack <= 1e-8)) {
+    p0 <- ifelse(!is.na(spec$starts$fixed), spec$starts$fixed,
+                 (spec$starts$lo + spec$starts$hi) / 2)
+    for (lam in c(1e-4, 1e-3, 1e-2, 0.05, 0.1, 0.5)) {
+      cand <- (1 - lam) * start_val + lam * p0
+      if (all(spec$ui %*% cand + spec$ci > 1e-8)) {
+        start_val <- cand
+        names(start_val) <- spec$names
+        break
+      }
+    }
+  }
+
   # Single constrained BFGS run from the best start (legacy behavior).
   # 由最优候选出发的单次带约束 BFGS(与旧脚本一致)。
   est <- suppressWarnings(maxLik::maxLik(

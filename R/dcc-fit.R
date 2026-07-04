@@ -14,6 +14,8 @@
 #' @param univariate_args List of arguments for the `garch_midas` path:
 #'   `X`, `K`, `rv`, `K_rv`, `break_dates` (same semantics as
 #'   [fit_garch_midas()]); `rv` covariates are computed from `r_full`.
+#'   Optionally `start_matrix`: optimizer starts for the first step — one
+#'   matrix used for every asset, or a list with one matrix per asset.
 #' @param r_full Original (untrimmed) returns, used to compute realized
 #'   volatility with full history.
 #' @param period,lag_fun,n_starts,seed,control Passed to [fit_garch_midas()].
@@ -40,6 +42,17 @@ univ_stage <- function(r_al, univariate, distribution, out_of_sample,
     rv_flag <- ua$rv %||% is.null(ua$X)
     K  <- ua$K %||% 12
 
+    # Optional per-asset optimizer starts (e.g. rolling re-estimation warm
+    # starts): a single matrix used for every asset, or a list with one
+    # matrix per asset, columns in gm_par_index() order.
+    # 可选的逐资产优化起点(如滚动重估热启动):单个矩阵作用于全部资产,
+    # 或按资产给列表;列序遵循 gm_par_index()。
+    sm <- ua$start_matrix
+    if (!is.null(sm) && is.list(sm) && length(sm) != N_assets) {
+      stop("univariate_args$start_matrix must be a single matrix or a list with one matrix per asset.",
+           call. = FALSE)
+    }
+
     for (i in seq_len(N_assets)) {
       # Realized volatility from the FULL column history so that the aligned
       # sample keeps K+1 periods of RV lags (passing it as an explicit
@@ -54,13 +67,16 @@ univ_stage <- function(r_al, univariate, distribution, out_of_sample,
         K_i <- c(as.integer(ua$K_rv %||% K[1]), K_i)
       }
 
+      ctrl_i <- control
+      ctrl_i$start_matrix <- if (is.list(sm)) sm[[i]] else sm
+
       u_est[[i]] <- fit_garch_midas(
         r_al[, i], X = X_i, K = K_i, rv = FALSE,
         period = period, distribution = distribution, lag_fun = lag_fun,
         break_dates = ua$break_dates,
         out_of_sample = out_of_sample,
         vol_proxy = if (!is.null(vol_proxy)) vol_proxy[, i] else NULL,
-        n_starts = n_starts, seed = seed, control = control
+        n_starts = n_starts, seed = seed, control = ctrl_i
       )
 
       est_details[[i]] <- u_est[[i]]$rob_coef_mat
@@ -151,6 +167,10 @@ univ_stage <- function(r_al, univariate, distribution, out_of_sample,
 #' @param vol_proxy Optional multivariate variance proxy (same columns as
 #'   `returns`).
 #' @param n_starts,seed,control Optimizer settings shared by both steps.
+#'   Exception: `control$start_matrix` targets the correlation step only
+#'   (columns in `dcc_par_index()` order); first-step starts go through
+#'   `univariate_args$start_matrix`. 注:control$start_matrix 只作用于
+#'   第二步,第一步起点经 univariate_args$start_matrix 注入。
 #'
 #' @return An object of class `dcc_fit`; see [summary.dcc_fit()].
 #' @examples
@@ -260,10 +280,19 @@ fit_dcc <- function(returns,
   if (!is.null(vol_proxy)) vol_proxy <- vol_proxy[days]
 
   ############################# first step / 第一步:单变量
+  # control$start_matrix targets the SECOND (correlation) step only: its
+  # columns follow dcc_par_index() and would not match the univariate
+  # specs. Per-asset starts for the first step are injected via
+  # univariate_args$start_matrix instead.
+  # control$start_matrix 只作用于第二步(相关性);第一步的起点按资产
+  # 经 univariate_args$start_matrix 注入,两步参数空间互不混淆。
+  control_univ <- control
+  control_univ$start_matrix <- NULL
+
   st1 <- univ_stage(r_al, univariate, distribution, out_of_sample,
                     univariate_args, r_full = returns, period = period,
                     lag_fun = lag_fun, n_starts = n_starts, seed = seed,
-                    control = control, vol_proxy = vol_proxy)
+                    control = control_univ, vol_proxy = vol_proxy)
 
   # Standardized residuals and D_t cubes over the full sample
   # 全样本标准化残差与条件标准差对角阵
